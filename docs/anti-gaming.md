@@ -127,8 +127,11 @@ external archival endpoint is needed and no single provider grades the others.
 The round's majority-verified signature also anchors an **archival rotation of
 `getSignaturesForAddress`**: every other probe pages the USDC mint's history with
 `before: <that signature>`, exercising the full `address_signatures` index at a
-random, never-repeated depth (`target="archival"` on the metrics; recent and
-archival pages are the same method but separable by that label). The response must
+random, never-repeated depth (`method="getSignaturesForAddress_archival"` and
+`target="archival"` on the metrics and raw samples). Recent pages use
+`method="getSignaturesForAddress_recent"` and `target=""`, so recent serving quality
+and archival coverage have separate latency and error-rate series. When no new
+eligible anchor is available, the alternate cycle remains a recent probe. The response must
 contain only slots strictly before the anchor. Anchored pages produce no layer-2
 claims — the reference node has purged that history — and their signatures are not
 harvested into the recent-signature pool.

@@ -61,7 +61,16 @@ impl RpcMethod {
             Self::GetBlockArchival => "getBlock_archival",
             Self::GetTransactionRecent => "getTransaction_recent",
             Self::GetTransactionArchival => "getTransaction_archival",
-            Self::GetSignaturesForAddress => "getSignaturesForAddress",
+            Self::GetSignaturesForAddress => "getSignaturesForAddress_recent",
+        }
+    }
+
+    /// The scheduler marks signature probes with an actual `before` anchor as
+    /// archival. Use that request target even when the response is an error.
+    pub fn label_for_target(self, target: &str) -> &'static str {
+        match (self, target) {
+            (Self::GetSignaturesForAddress, "archival") => "getSignaturesForAddress_archival",
+            _ => self.label(),
         }
     }
 
@@ -641,6 +650,10 @@ mod tests {
 
     #[test]
     fn signatures_query_pulls_a_full_page() {
+        // The metric split must not rename the JSON-RPC method or the config key.
+        let method: RpcMethod = serde_json::from_str("\"get_signatures_for_address\"").unwrap();
+        assert_eq!(method, RpcMethod::GetSignaturesForAddress);
+        assert_eq!(method.rpc_name(), "getSignaturesForAddress");
         let params = RpcMethod::GetSignaturesForAddress
             .build_params(&RequestContext::default())
             .unwrap();

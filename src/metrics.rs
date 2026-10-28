@@ -113,7 +113,7 @@ impl Metrics {
         result: &str,
     ) {
         self.claim_check
-            .with_label_values(&[provider, method.label(), target, result])
+            .with_label_values(&[provider, method.label_for_target(target), target, result])
             .inc();
     }
 
@@ -141,7 +141,7 @@ impl Metrics {
         status: CallStatus,
         target: &str,
     ) {
-        let method = method.label();
+        let method = method.label_for_target(target);
         let status_label = status.label();
         let error_kind = status.error_kind().unwrap_or("none");
 
@@ -229,6 +229,71 @@ mod tests {
         assert!(output.contains("region=\"test-region\""));
         assert!(output.contains("status=\"success\""));
         assert!(output.contains("error_kind=\"timeout\""));
+    }
+
+    #[test]
+    fn signature_history_errors_do_not_affect_recent_series() {
+        let metrics = Metrics::new("test", "eu-central").unwrap();
+        let method = RpcMethod::GetSignaturesForAddress;
+        metrics.record_call(
+            "provider",
+            method,
+            &result(CallStatus::Success),
+            CallStatus::Success,
+            "",
+        );
+        // Error responses need not contain any slot or signature. Their series
+        // must follow the request's target, not the returned content.
+        let errors = [
+            ErrorKind::RpcError(-32017),
+            ErrorKind::Timeout,
+            ErrorKind::Empty,
+        ];
+        for error in errors {
+            let status = CallStatus::Error(error);
+            let mut response = result(status);
+            response.observed_slot = None;
+            metrics.record_call("provider", method, &response, status, "archival");
+        }
+        metrics.record_slot_lag("provider", method, 3);
+        metrics.record_claim_check("provider", method, "", "match");
+
+        let output = metrics.encode().unwrap();
+        for metric in ["rpc_requests_total{", "rpc_latency_seconds_count{"] {
+            let recent: Vec<_> = output
+                .lines()
+                .filter(|line| {
+                    line.starts_with(metric)
+                        && line.contains("method=\"getSignaturesForAddress_recent\"")
+                })
+                .collect();
+            assert_eq!(recent.len(), 1);
+            assert!(recent[0].contains("status=\"success\""));
+            assert!(recent[0].contains("target=\"\""));
+            assert!(recent[0].ends_with(" 1"));
+
+            let archival_count: f64 = output
+                .lines()
+                .filter(|line| {
+                    line.starts_with(metric)
+                        && line.contains("method=\"getSignaturesForAddress_archival\"")
+                })
+                .map(|line| {
+                    assert!(line.contains("status=\"error\""));
+                    assert!(line.contains("target=\"archival\""));
+                    line.rsplit_once(' ').unwrap().1.parse::<f64>().unwrap()
+                })
+                .sum();
+            assert_eq!(archival_count, 3.0);
+        }
+        for metric in ["rpc_slot_lag{", "rpc_claim_check_total{"] {
+            let line = output
+                .lines()
+                .find(|line| line.starts_with(metric))
+                .unwrap();
+            assert!(line.contains("method=\"getSignaturesForAddress_recent\""));
+        }
+        assert!(!output.contains("method=\"getSignaturesForAddress\""));
     }
 
     #[test]
