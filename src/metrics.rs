@@ -113,7 +113,7 @@ impl Metrics {
         result: &str,
     ) {
         self.claim_check
-            .with_label_values(&[provider, method.label_for_target(target), target, result])
+            .with_label_values(&[provider, method.label(), target, result])
             .inc();
     }
 
@@ -141,7 +141,7 @@ impl Metrics {
         status: CallStatus,
         target: &str,
     ) {
-        let method = method.label_for_target(target);
+        let method = method.label();
         let status_label = status.label();
         let error_kind = status.error_kind().unwrap_or("none");
 
@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn signature_history_errors_do_not_affect_recent_series() {
         let metrics = Metrics::new("test", "eu-central").unwrap();
-        let method = RpcMethod::GetSignaturesForAddress;
+        let method = RpcMethod::GetSignaturesForAddressRecent;
         metrics.record_call(
             "provider",
             method,
@@ -242,8 +242,6 @@ mod tests {
             CallStatus::Success,
             "",
         );
-        // Error responses need not contain any slot or signature. Their series
-        // must follow the request's target, not the returned content.
         let errors = [
             ErrorKind::RpcError(-32017),
             ErrorKind::Timeout,
@@ -253,7 +251,13 @@ mod tests {
             let status = CallStatus::Error(error);
             let mut response = result(status);
             response.observed_slot = None;
-            metrics.record_call("provider", method, &response, status, "archival");
+            metrics.record_call(
+                "provider",
+                RpcMethod::GetSignaturesForAddressArchival,
+                &response,
+                status,
+                "archival",
+            );
         }
         metrics.record_slot_lag("provider", method, 3);
         metrics.record_claim_check("provider", method, "", "match");

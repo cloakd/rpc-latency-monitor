@@ -69,7 +69,7 @@ impl SampleLogger {
         let _ = self.tx.try_send(Sample {
             ts,
             provider: provider.to_string(),
-            method: method.label_for_target(target),
+            method: method.label(),
             infra: self.infra.clone(),
             region: self.region.clone(),
             target: target.to_string(),
@@ -165,61 +165,4 @@ async fn flush_chunk(
         tracing::warn!(%failure, count, "sample flush failed, buffer full, dropping batch");
     }
     false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rpc::ErrorKind;
-
-    #[test]
-    fn signature_samples_separate_recent_and_archival_outcomes() {
-        let (tx, mut rx) = mpsc::channel(4);
-        let logger = SampleLogger {
-            tx,
-            infra: "tsw".to_string(),
-            region: "ams".to_string(),
-        };
-        for (target, status, expected_method) in [
-            ("", CallStatus::Success, "getSignaturesForAddress_recent"),
-            (
-                "",
-                CallStatus::Error(ErrorKind::Stale),
-                "getSignaturesForAddress_recent",
-            ),
-            (
-                "archival",
-                CallStatus::Success,
-                "getSignaturesForAddress_archival",
-            ),
-            (
-                "archival",
-                CallStatus::Error(ErrorKind::RpcError(-32017)),
-                "getSignaturesForAddress_archival",
-            ),
-        ] {
-            let result = CallResult {
-                latency: Duration::from_millis(12),
-                status,
-                observed_slot: None,
-                signature: None,
-                archival_signature: None,
-                accounts: Vec::new(),
-                claim: None,
-                endpoint_ip: None,
-            };
-            logger.log(
-                "provider",
-                RpcMethod::GetSignaturesForAddress,
-                status,
-                target,
-                &result,
-            );
-            let sample = serde_json::to_value(rx.try_recv().unwrap()).unwrap();
-            assert_eq!(sample["method"], expected_method);
-            assert_eq!(sample["target"], target);
-            assert_eq!(sample["status"], status.label());
-            assert_eq!(sample["error_kind"], status.error_kind().unwrap_or("none"));
-        }
-    }
 }

@@ -164,20 +164,11 @@ to either the config value or the raw JSON-RPC name:
 | `get_block_recent` | `getBlock` | `getBlock_recent` | A recent block a fixed depth behind the tip, **`transactionDetails: full`** (a real block fetch); also seeds the live account pool. |
 | `get_block_archival` | `getBlock` | `getBlock_archival` | A full block ~40M slots back, retained only by archival nodes (non-archival tiers correctly error). Driven by the coordinated archival round (below), not a per-provider loop: every provider is asked the **same random, never-repeated** old slot so latency is comparable and blockhashes can be cross-checked. |
 | `get_transaction_recent` | `getTransaction` | `getTransaction_recent` | A signature freshly discovered by `get_signatures_for_address`. |
-| `get_signatures_for_address` (recent probe) | `getSignaturesForAddress` | `getSignaturesForAddress_recent` | A permanently busy address at `confirmed`, `limit` 1000 (a full page, not just the head). The head signature's slot is the response's observed slot, so a cached page scores `stale`. |
-| `get_signatures_for_address` (archival rotation) | `getSignaturesForAddress` | `getSignaturesForAddress_archival` | Pages the same address with `before` set to a majority-verified archival signature. Eligible alternate cycles use a new anchor; otherwise the probe remains recent. |
+| `get_signatures_for_address_recent` | `getSignaturesForAddress` | `getSignaturesForAddress_recent` | A permanently busy address at `confirmed`, `limit` 1000 (a full page, not just the head). The head signature's slot is the response's observed slot, so a cached page scores `stale`. |
+| `get_signatures_for_address_archival` | `getSignaturesForAddress` | `getSignaturesForAddress_archival` | Pages the same address with `before` set to a majority-verified archival signature. Eligible alternate cycles use a new anchor; otherwise the probe remains recent. |
 
-Signature probes keep the existing `get_signatures_for_address` configuration and cadence.
-Their Prometheus metrics and raw samples use separate `_recent` and `_archival` method labels,
-matching the block and transaction probes. The existing target labels (`""` for recent,
-`"archival"` for archival) are retained. Recent slot-lag and claim-check metrics use
-`getSignaturesForAddress_recent`; archival signature pages produce neither.
-
-**Label migration:** new observations no longer use the combined `getSignaturesForAddress`
-method label. Update downstream method selectors and queries (including solana.com/data) to
-offer both new labels; Grafana's method variable discovers them automatically. Historical
-series and stored samples keep their original labels. To inspect pre-migration Prometheus
-data separately, filter the old method by `target=""` or `target="archival"`.
+`get_signatures_for_address` remains an alias for `get_signatures_for_address_recent`.
+The recent check owns the archival rotation, as before.
 
 ### Regions
 
